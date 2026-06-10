@@ -1,0 +1,8 @@
+streamlit>=1.30
+numpy
+pandas
+opencv-python-headless
+scikit-learn==1.6.1
+# 실시간 웹캠(탭2)을 쓰려면 아래 두 줄도 필요합니다. 안 써도 나머지 기능은 동작합니다.
+streamlit-webrtc
+av
