@@ -3,4 +3,3 @@ numpy
 pandas
 opencv-python-headless
 scikit-learn
-streamlit-back-camera-input
