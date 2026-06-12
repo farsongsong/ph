@@ -181,14 +181,91 @@ def run_analysis(img_bgr, source_label=""):
 
 tab1, tab2, tab3 = st.tabs(["📷 카메라 촬영", "🎥 실시간 웹캠", "📁 사진 업로드"])
 
-# ── 탭 1: 카메라 스냅샷 (st.camera_input) ──
+# ── 탭 1: 카메라 스냅샷 (후면 카메라 우선, HTML/JS) ──
 with tab1:
-    st.write("버튼을 눌러 사진을 찍으면 바로 분석합니다. (모바일·PC 모두 동작)")
-    shot = st.camera_input("사진 촬영", label_visibility="collapsed")
-    if shot is not None:
-        arr = np.frombuffer(shot.getvalue(), np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        run_analysis(img, "(촬영)")
+    st.write("버튼을 눌러 사진을 찍으면 바로 분석합니다.")
+    cam1 = st.radio("카메라", ["후면 카메라", "전면 카메라"], horizontal=True,
+                    key="snap_facing")
+    facing1 = "environment" if cam1 == "후면 카메라" else "user"
+
+    import streamlit.components.v1 as components
+
+    components.html(f"""
+    <div style="font-family:sans-serif">
+      <video id="vid" autoplay playsinline
+             style="width:100%;max-width:480px;border-radius:10px;background:#000"></video>
+      <br>
+      <button id="snap" style="margin-top:8px;padding:10px 20px;font-size:16px;
+              border:none;border-radius:8px;background:#26c281;color:#fff;cursor:pointer">
+        📸 사진 찍기
+      </button>
+      <button id="flip" style="margin-top:8px;padding:10px 16px;font-size:16px;
+              border:none;border-radius:8px;background:#3b6ea5;color:#fff;cursor:pointer">
+        🔄 카메라 전환
+      </button>
+      <canvas id="cv" style="display:none"></canvas>
+      <div id="msg" style="color:#888;font-size:13px;margin-top:6px"></div>
+    </div>
+    <script>
+      let facing = "{facing1}";
+      let stream = null;
+      const vid = document.getElementById('vid');
+      const msg = document.getElementById('msg');
+
+      async function start() {{
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        try {{
+          stream = await navigator.mediaDevices.getUserMedia({{
+            video: {{ facingMode: {{ ideal: facing }} }}, audio: false
+          }});
+          vid.srcObject = stream;
+          msg.textContent = (facing === "environment" ? "후면" : "전면") + " 카메라 사용 중";
+        }} catch (e) {{
+          msg.textContent = "카메라를 열 수 없습니다: " + e.message;
+        }}
+      }}
+      start();
+
+      document.getElementById('flip').onclick = () => {{
+        facing = (facing === "environment") ? "user" : "environment";
+        start();
+      }};
+
+      document.getElementById('snap').onclick = () => {{
+        const cv = document.getElementById('cv');
+        cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+        cv.getContext('2d').drawImage(vid, 0, 0);
+        const data = cv.toDataURL('image/jpeg', 0.9);
+        // 부모(스트림릿) 쪽 텍스트영역에 base64를 넣어 전달
+        const inp = window.parent.document.querySelector('textarea[aria-label="snap_data"]');
+        if (inp) {{
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, 'value').set;
+          setter.call(inp, data);
+          inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+          msg.textContent = "촬영됨! 아래에서 분석 결과를 확인하세요.";
+        }} else {{
+          msg.textContent = "전송 실패: 아래 입력창을 찾지 못했습니다.";
+        }}
+      }};
+    </script>
+    """, height=620)
+
+    snap_data = st.text_area("snap_data", key="snap_data", height=68,
+                             label_visibility="collapsed",
+                             placeholder="여기에 촬영 데이터가 자동으로 들어옵니다. (직접 입력하지 마세요)")
+    if snap_data and snap_data.startswith("data:image"):
+        try:
+            import base64 as _b64
+            b64 = snap_data.split(",", 1)[1]
+            arr = np.frombuffer(_b64.b64decode(b64), np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is not None:
+                run_analysis(img, "(촬영)")
+            else:
+                st.warning("이미지를 해석하지 못했습니다. 다시 찍어주세요.")
+        except Exception as e:
+            st.warning(f"촬영 처리 오류: {e}")
 
 # ── 탭 2: 실시간 웹캠 (streamlit-webrtc) ──
 with tab2:
