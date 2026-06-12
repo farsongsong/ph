@@ -3,3 +3,5 @@ numpy
 pandas
 opencv-python-headless
 scikit-learn
+streamlit-webrtc
+av
