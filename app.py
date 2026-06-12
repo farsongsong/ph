@@ -181,10 +181,46 @@ def run_analysis(img_bgr, source_label=""):
 
 tab1, tab3 = st.tabs(["📷 카메라 촬영", "📁 사진 업로드"])
 
-# ── 탭 1: 카메라 촬영 ──
+# ── 탭 1: 카메라 촬영 (후면 카메라 강제) ──
 with tab1:
     st.write("카메라로 비커를 비추고 사진을 찍으면 바로 분석합니다.")
-    st.caption("※ 휴대폰에서 후면 카메라로 바꾸려면, 촬영 화면 오른쪽 위의 카메라 전환 아이콘을 누르세요.")
+
+    cam_pref = st.radio("카메라", ["후면", "전면"], horizontal=True, key="cam_pref")
+    facing = "environment" if cam_pref == "후면" else "user"
+
+    # Streamlit 기본 카메라 위젯(촬영 버튼·크기 그대로)에 후면 카메라를 강제 적용.
+    # 위젯이 video 스트림을 만들 때, 원하는 facingMode로 다시 잡아 교체한다.
+    st.components.v1.html(f"""
+    <script>
+    (function() {{
+      const want = "{facing}";
+      const doc = window.parent.document;
+
+      async function applyFacing() {{
+        const video = doc.querySelector('video');
+        if (!video) return false;
+        try {{
+          const newStream = await navigator.mediaDevices.getUserMedia({{
+            video: {{ facingMode: {{ ideal: want }} }}, audio: false
+          }});
+          // 기존 스트림 정지 후 교체
+          if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+          video.srcObject = newStream;
+          await video.play().catch(()=>{{}});
+          return true;
+        }} catch (e) {{ return false; }}
+      }}
+
+      // 위젯이 늦게 뜰 수 있으니 잠깐 동안 반복 시도
+      let tries = 0;
+      const timer = setInterval(async () => {{
+        tries++;
+        const ok = await applyFacing();
+        if (ok || tries > 20) clearInterval(timer);
+      }}, 400);
+    }})();
+    </script>
+    """, height=0)
 
     shot = st.camera_input("사진 촬영", label_visibility="collapsed")
     if shot is not None:
