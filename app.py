@@ -181,29 +181,17 @@ def run_analysis(img_bgr, source_label=""):
 
 tab1, tab3 = st.tabs(["📷 카메라 촬영", "📁 사진 업로드"])
 
-# ── 탭 1: 카메라 촬영 (후면 카메라 우선) ──
+# ── 탭 1: 카메라 촬영 ──
 with tab1:
     st.write("카메라로 비커를 비추고 사진을 찍으면 바로 분석합니다.")
+    st.caption("※ 휴대폰에서 후면 카메라로 바꾸려면, 촬영 화면 오른쪽 위의 카메라 전환 아이콘을 누르세요.")
 
-    img = None
-    try:
-        # 후면 카메라를 지원하는 컴포넌트
-        from streamlit_back_camera_input import back_camera_input
-        shot = back_camera_input("비커를 비추고 화면을 탭하세요")
-        if shot is not None:
-            arr = np.frombuffer(shot.getvalue(), np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    except ModuleNotFoundError:
-        # 컴포넌트가 없으면 기본 카메라로 대체 (후면 지정은 안 되지만 동작은 함)
-        st.caption("※ 후면 카메라 전용 기능을 쓰려면 requirements.txt에 "
-                   "`streamlit-back-camera-input` 을 추가하세요. 지금은 기본 카메라로 동작합니다.")
-        shot = st.camera_input("사진 촬영", label_visibility="collapsed")
-        if shot is not None:
-            arr = np.frombuffer(shot.getvalue(), np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-
-    if img is not None:
-        run_analysis(img, "(촬영)")
+    shot = st.camera_input("사진 촬영", label_visibility="collapsed")
+    if shot is not None:
+        arr = np.frombuffer(shot.getvalue(), np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is not None:
+            run_analysis(img, "(촬영)")
 
 # ── 탭 2: 업로드 ──
 with tab3:
