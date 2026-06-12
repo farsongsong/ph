@@ -193,6 +193,15 @@ with tab1:
 # ── 탭 2: 실시간 웹캠 (streamlit-webrtc) ──
 with tab2:
     st.write("실시간 영상에서 매 프레임 pH를 예측합니다.")
+
+    # 전면/후면 카메라 선택
+    cam_choice = st.radio(
+        "카메라 선택", ["후면 카메라", "전면 카메라"],
+        horizontal=True, key="cam_facing",
+        help="휴대폰은 후면(뒷면) 카메라가 보통 더 선명합니다. 노트북은 전면만 있을 수 있어요.",
+    )
+    facing_mode = "environment" if cam_choice == "후면 카메라" else "user"
+
     try:
         from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
         import av
@@ -208,13 +217,18 @@ with tab2:
                 out = draw_overlay(img, feat, ph)
                 return av.VideoFrame.from_ndarray(out, format="bgr24")
 
+        # key에 facing_mode를 넣어, 카메라를 바꾸면 스트리머가 새로 시작되게 함
         webrtc_streamer(
-            key="ph-live",
+            key=f"ph-live-{facing_mode}",
             video_processor_factory=PHProcessor,
-            media_stream_constraints={"video": True, "audio": False},
+            media_stream_constraints={
+                "video": {"facingMode": {"ideal": facing_mode}},
+                "audio": False,
+            },
             async_processing=True,
         )
-        st.caption("※ 카메라 권한을 허용하세요. 비커가 화면에 크게 들어오도록 비추면 됩니다.")
+        st.caption("※ 카메라 권한을 허용하세요. 카메라를 바꾸면 위 영상이 잠깐 멈췄다 다시 시작됩니다. "
+                   "전환이 안 되면 'STOP' 후 다시 'START'를 눌러보세요.")
     except ModuleNotFoundError:
         st.info("실시간 웹캠 기능을 쓰려면 streamlit-webrtc 가 필요합니다:\n\n"
                 "`pip install streamlit-webrtc av`\n\n"
