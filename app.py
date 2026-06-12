@@ -179,139 +179,33 @@ def run_analysis(img_bgr, source_label=""):
     return ph, feat
 
 
-tab1, tab2, tab3 = st.tabs(["📷 카메라 촬영", "🎥 실시간 웹캠", "📁 사진 업로드"])
+tab1, tab3 = st.tabs(["📷 카메라 촬영", "📁 사진 업로드"])
 
-# ── 탭 1: 카메라 스냅샷 (후면 카메라 우선, HTML/JS) ──
+# ── 탭 1: 카메라 촬영 (후면 카메라 우선) ──
 with tab1:
-    st.write("버튼을 눌러 사진을 찍으면 바로 분석합니다.")
-    cam1 = st.radio("카메라", ["후면 카메라", "전면 카메라"], horizontal=True,
-                    key="snap_facing")
-    facing1 = "environment" if cam1 == "후면 카메라" else "user"
+    st.write("카메라로 비커를 비추고 사진을 찍으면 바로 분석합니다.")
 
-    import streamlit.components.v1 as components
-
-    components.html(f"""
-    <div style="font-family:sans-serif">
-      <video id="vid" autoplay playsinline
-             style="width:100%;max-width:480px;border-radius:10px;background:#000"></video>
-      <br>
-      <button id="snap" style="margin-top:8px;padding:10px 20px;font-size:16px;
-              border:none;border-radius:8px;background:#26c281;color:#fff;cursor:pointer">
-        📸 사진 찍기
-      </button>
-      <button id="flip" style="margin-top:8px;padding:10px 16px;font-size:16px;
-              border:none;border-radius:8px;background:#3b6ea5;color:#fff;cursor:pointer">
-        🔄 카메라 전환
-      </button>
-      <canvas id="cv" style="display:none"></canvas>
-      <div id="msg" style="color:#888;font-size:13px;margin-top:6px"></div>
-    </div>
-    <script>
-      let facing = "{facing1}";
-      let stream = null;
-      const vid = document.getElementById('vid');
-      const msg = document.getElementById('msg');
-
-      async function start() {{
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        try {{
-          stream = await navigator.mediaDevices.getUserMedia({{
-            video: {{ facingMode: {{ ideal: facing }} }}, audio: false
-          }});
-          vid.srcObject = stream;
-          msg.textContent = (facing === "environment" ? "후면" : "전면") + " 카메라 사용 중";
-        }} catch (e) {{
-          msg.textContent = "카메라를 열 수 없습니다: " + e.message;
-        }}
-      }}
-      start();
-
-      document.getElementById('flip').onclick = () => {{
-        facing = (facing === "environment") ? "user" : "environment";
-        start();
-      }};
-
-      document.getElementById('snap').onclick = () => {{
-        const cv = document.getElementById('cv');
-        cv.width = vid.videoWidth; cv.height = vid.videoHeight;
-        cv.getContext('2d').drawImage(vid, 0, 0);
-        const data = cv.toDataURL('image/jpeg', 0.9);
-        // 부모(스트림릿) 쪽 텍스트영역에 base64를 넣어 전달
-        const inp = window.parent.document.querySelector('textarea[aria-label="snap_data"]');
-        if (inp) {{
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLTextAreaElement.prototype, 'value').set;
-          setter.call(inp, data);
-          inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-          msg.textContent = "촬영됨! 아래에서 분석 결과를 확인하세요.";
-        }} else {{
-          msg.textContent = "전송 실패: 아래 입력창을 찾지 못했습니다.";
-        }}
-      }};
-    </script>
-    """, height=620)
-
-    snap_data = st.text_area("snap_data", key="snap_data", height=68,
-                             label_visibility="collapsed",
-                             placeholder="여기에 촬영 데이터가 자동으로 들어옵니다. (직접 입력하지 마세요)")
-    if snap_data and snap_data.startswith("data:image"):
-        try:
-            import base64 as _b64
-            b64 = snap_data.split(",", 1)[1]
-            arr = np.frombuffer(_b64.b64decode(b64), np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            if img is not None:
-                run_analysis(img, "(촬영)")
-            else:
-                st.warning("이미지를 해석하지 못했습니다. 다시 찍어주세요.")
-        except Exception as e:
-            st.warning(f"촬영 처리 오류: {e}")
-
-# ── 탭 2: 실시간 웹캠 (streamlit-webrtc) ──
-with tab2:
-    st.write("실시간 영상에서 매 프레임 pH를 예측합니다.")
-
-    # 전면/후면 카메라 선택
-    cam_choice = st.radio(
-        "카메라 선택", ["후면 카메라", "전면 카메라"],
-        horizontal=True, key="cam_facing",
-        help="휴대폰은 후면(뒷면) 카메라가 보통 더 선명합니다. 노트북은 전면만 있을 수 있어요.",
-    )
-    facing_mode = "environment" if cam_choice == "후면 카메라" else "user"
-
+    img = None
     try:
-        from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-        import av
-
-        class PHProcessor(VideoProcessorBase):
-            def __init__(self):
-                self.latest_ph = None
-
-            def recv(self, frame):
-                img = frame.to_ndarray(format="bgr24")
-                ph, feat = predict_ph(img, bundle)
-                self.latest_ph = ph
-                out = draw_overlay(img, feat, ph)
-                return av.VideoFrame.from_ndarray(out, format="bgr24")
-
-        # key에 facing_mode를 넣어, 카메라를 바꾸면 스트리머가 새로 시작되게 함
-        webrtc_streamer(
-            key=f"ph-live-{facing_mode}",
-            video_processor_factory=PHProcessor,
-            media_stream_constraints={
-                "video": {"facingMode": {"ideal": facing_mode}},
-                "audio": False,
-            },
-            async_processing=True,
-        )
-        st.caption("※ 카메라 권한을 허용하세요. 카메라를 바꾸면 위 영상이 잠깐 멈췄다 다시 시작됩니다. "
-                   "전환이 안 되면 'STOP' 후 다시 'START'를 눌러보세요.")
+        # 후면 카메라를 지원하는 컴포넌트
+        from streamlit_back_camera_input import back_camera_input
+        shot = back_camera_input("비커를 비추고 화면을 탭하세요")
+        if shot is not None:
+            arr = np.frombuffer(shot.getvalue(), np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     except ModuleNotFoundError:
-        st.info("실시간 웹캠 기능을 쓰려면 streamlit-webrtc 가 필요합니다:\n\n"
-                "`pip install streamlit-webrtc av`\n\n"
-                "설치가 어려우면 '카메라 촬영' 탭을 사용하세요 (기능은 거의 동일).")
+        # 컴포넌트가 없으면 기본 카메라로 대체 (후면 지정은 안 되지만 동작은 함)
+        st.caption("※ 후면 카메라 전용 기능을 쓰려면 requirements.txt에 "
+                   "`streamlit-back-camera-input` 을 추가하세요. 지금은 기본 카메라로 동작합니다.")
+        shot = st.camera_input("사진 촬영", label_visibility="collapsed")
+        if shot is not None:
+            arr = np.frombuffer(shot.getvalue(), np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-# ── 탭 3: 업로드 ──
+    if img is not None:
+        run_analysis(img, "(촬영)")
+
+# ── 탭 2: 업로드 ──
 with tab3:
     st.write("저장된 사진 파일을 올려 분석합니다. 여러 장을 한 번에 올리면 평균도 계산합니다.")
     files = st.file_uploader("이미지 업로드 (jpg/png)", type=["jpg", "jpeg", "png"],
